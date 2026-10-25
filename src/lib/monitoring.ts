@@ -2,6 +2,7 @@
 import { refreshAndGet, calcPercentile, fetchIndicator } from './csindex';
 import { fetchTreasury10Y } from './treasury';
 import { DEFAULT_RULES, applyRule, Rule, Signal } from './rules';
+import { sendAlertEmail, NotifyEnv } from './notify';
 
 export interface RuleResult {
   ruleId: string;
@@ -60,7 +61,7 @@ export interface MonitorRun {
 }
 
 /** 读取规则 → 算指标 → 判信号 → 写回 KV（由 cron 的 scheduled 调用） */
-export async function runMonitor(env: { MONITOR_KV: KVNamespace }): Promise<MonitorRun> {
+export async function runMonitor(env: { MONITOR_KV: KVNamespace } & NotifyEnv): Promise<MonitorRun> {
   const kv = env.MONITOR_KV;
 
   const rawRules = await kv.get(KEY_RULES);
@@ -112,7 +113,7 @@ export async function runMonitor(env: { MONITOR_KV: KVNamespace }): Promise<Moni
     let log: any[] = [];
     try { const raw = await kv.get(KEY_LOG); if (raw) log = JSON.parse(raw); } catch { /* ignore */ }
     await kv.put(KEY_LOG, JSON.stringify([...changedEvents, ...log].slice(0, MAX_LOG)));
-    // TODO: 在这里接推送（Server酱 / 企业微信）
+    await sendAlertEmail(changedEvents, env);
   }
 
   return { items, changedEvents };

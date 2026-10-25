@@ -8,6 +8,9 @@ interface Env {
   PE_HISTORY: KVNamespace;
   MONITOR_KV: KVNamespace;
   ASSETS: Fetcher;
+  RESEND_API_KEY?: string;
+  ALERT_TO?: string;
+  ALERT_FROM?: string;
 }
 
 type HandlerContext = { request: Request; env: Env };
