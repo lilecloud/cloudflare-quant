@@ -1,0 +1,18 @@
+name = "quant"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+
+# 定时 Worker：只负责 cron 计算 + 发邮件（workers.dev 被墙不影响服务端执行）
+[triggers]
+crons = ["45 7 * * 1-5"]
+
+[vars]
+ALERT_TO = "lile_0126@126.com"
+
+[[kv_namespaces]]
+binding = "PE_HISTORY"
+id = "ddddc64e370f496a8ea6d3accdc9c324"
+
+[[kv_namespaces]]
+binding = "MONITOR_KV"
+id = "bd48f9f9f13640c78ede0a1a1e0b1a97"

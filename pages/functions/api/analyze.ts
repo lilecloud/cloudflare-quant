@@ -1,15 +1,15 @@
-import { AnalysisResult } from '../lib/types';
+import { AnalysisResult } from '../_lib/types';
 import {
   fetchStockInfo, fetchBoardNames, fetchBoardStocks, normalizeIndustry,
-} from '../lib/eastmoney';
+} from '../_lib/eastmoney';
 import {
   fetchAnnualFinancials, fetchCashflow, fetchGoodwill, fetchValuationHistory,
-} from '../lib/emfin';
+} from '../_lib/emfin';
 import {
   analyzePERanking, analyzeROE, analyzeEPSGrowth, analyzeDebtRatio, analyzeCashflow,
   analyzeRevenueGrowth, analyzeMarginSeries, analyzeFCF, analyzeValuationPercentile,
   analyzeCashRatio, analyzeGoodwill, analyzeLiquidity, analyzePEG,
-} from '../lib/analysis';
+} from '../_lib/analysis';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

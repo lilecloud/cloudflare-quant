@@ -1,7 +1,7 @@
 import {
   IndexRank, loadPEHistory, getLastUpdated, setLastUpdated, refreshAndGet,
   calcPercentile, scoreAndAction, fetchIndicator, ValuationMethod,
-} from '../lib/csindex';
+} from '../_lib/csindex';
 
 // valuation: PE=市盈率估值 | DIVIDEND=股息率估值 | PB=市净率估值
 // 市场通用标准：红利类看股息率；金融/证券等盈利波动大的行业看市净率

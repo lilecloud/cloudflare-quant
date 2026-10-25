@@ -1,5 +1,5 @@
-// 信号监控：规则/结果在 KV 中的 key；Rule/DEFAULT_RULES 统一来自 ../lib/rules
-import { Rule, DEFAULT_RULES } from '../lib/rules';
+// 信号监控：规则/结果在 KV 中的 key；Rule/DEFAULT_RULES 统一来自 ../_lib/rules
+import { Rule, DEFAULT_RULES } from '../_lib/rules';
 
 export { Rule, DEFAULT_RULES };
 export const RULES_KEY = 'rules';
