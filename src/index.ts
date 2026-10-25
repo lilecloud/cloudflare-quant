@@ -42,6 +42,9 @@ function route(context: HandlerContext): Promise<Response> | null {
   if (path === '/api/test-email') {
     if (method === 'GET' || method === 'POST') return handleTestEmail(context);
   }
+  if (path === '/api/run-monitor') {
+    if (method === 'GET' || method === 'POST') return handleRunMonitor(context);
+  }
   return null;
 }
 
@@ -68,6 +71,37 @@ async function handleTestEmail(context: HandlerContext): Promise<Response> {
   return new Response(JSON.stringify({ ok: true, message: '测试邮件已触发，请检查收件箱（含垃圾邮件）' }), {
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+/** 手动触发一次监控计算：GET/POST /api/run-monitor（需登录 Access） */
+async function handleRunMonitor(context: HandlerContext): Promise<Response> {
+  try {
+    const { items, changedEvents } = await runMonitor(context.env);
+    return new Response(
+      JSON.stringify(
+        {
+          ok: true,
+          changedCount: changedEvents.length,
+          items: items.map((i) => ({
+            ruleId: i.ruleId,
+            name: i.name,
+            value: i.value,
+            signal: i.signal,
+            reason: i.reason,
+            detail: i.detail,
+          })),
+        },
+        null,
+        2,
+      ),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }
 
 export default {
