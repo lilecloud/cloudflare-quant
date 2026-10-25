@@ -14,6 +14,10 @@ export interface RuleResult {
   changed?: boolean;
   message: string;
   updatedAt: string;
+  /** 底层原始数据（股息率 / 国债收益率 / PE 等），用于展示「现在数据是啥」 */
+  detail?: Record<string, number | null>;
+  /** 命中说明（哪条阈值触发了这个信号） */
+  reason?: string;
 }
 
 const KEY_RULES = 'rules';
@@ -25,34 +29,56 @@ function nowIso(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
-/** 按 indicator key 计算指标值（数据源：中证指数 + 东财国债） */
-async function computeIndicator(kv: KVNamespace, indicator: string): Promise<number> {
+interface IndicatorResult {
+  value: number;
+  detail: Record<string, number | null>;
+}
+
+/** 按 indicator key 计算指标值 + 底层数据 */
+async function computeIndicator(kv: KVNamespace, indicator: string): Promise<IndicatorResult> {
   if (indicator === 'erp_csi300') {
     const history = await refreshAndGet(kv, '000300');
     const { pe } = calcPercentile(history);
     const ty = await fetchTreasury10Y();
     if (!pe || ty == null) throw new Error('沪深300 PE 或国债数据获取失败');
-    return Math.round(((1 / pe) * 100 - ty) * 1000) / 1000;
+    const erp = Math.round(((1 / pe) * 100 - ty) * 1000) / 1000;
+    return { value: erp, detail: { pe, treasuryYield: ty, erp } };
   }
   if (indicator.startsWith('dividend_spread_')) {
     const code = indicator.slice('dividend_spread_'.length);
     const ind = await fetchIndicator(code);
     const ty = await fetchTreasury10Y();
     if (ind?.dividendYield == null || ty == null) throw new Error('股息率或国债数据获取失败');
-    return Math.round((ind.dividendYield - ty) * 1000) / 1000;
+    const spread = Math.round((ind.dividendYield - ty) * 1000) / 1000;
+    return { value: spread, detail: { dividendYield: ind.dividendYield, treasuryYield: ty, spread } };
   }
   if (indicator.startsWith('pe_percentile_')) {
     const code = indicator.slice('pe_percentile_'.length);
     const history = await refreshAndGet(kv, code);
-    return calcPercentile(history).percentile;
+    const { pe, percentile } = calcPercentile(history);
+    return { value: percentile, detail: { pe, percentile, historyDays: history.length } };
   }
   if (indicator.startsWith('dividend_yield_')) {
     const code = indicator.slice('dividend_yield_'.length);
     const ind = await fetchIndicator(code);
     if (ind?.dividendYield == null) throw new Error('股息率数据获取失败');
-    return ind.dividendYield;
+    return { value: ind.dividendYield, detail: { dividendYield: ind.dividendYield, pe: ind.pe } };
   }
   throw new Error(`未知 indicator: ${indicator}`);
+}
+
+/** 生成命中说明：哪条阈值 → 什么信号 */
+function buildReason(rule: Rule, value: number, signal: Signal): string {
+  const buy = rule.buyThreshold;
+  const sell = rule.sellThreshold;
+  if (rule.direction === 'high') {
+    if (signal === 'BUY') return `值 ${value} ≥ BUY 阈值 ${buy} → 买入`;
+    if (signal === 'SELL') return `值 ${value} ≤ SELL 阈值 ${sell} → 卖出`;
+    return `值 ${value} 介于 (${sell}, ${buy}) → 持有`;
+  }
+  if (signal === 'BUY') return `值 ${value} ≤ BUY 阈值 ${buy} → 买入`;
+  if (signal === 'SELL') return `值 ${value} ≥ SELL 阈值 ${sell} → 卖出`;
+  return `值 ${value} 介于 (${buy}, ${sell}) → 持有`;
 }
 
 export interface MonitorRun {
@@ -88,7 +114,7 @@ export async function runMonitor(env: { MONITOR_KV: KVNamespace } & NotifyEnv): 
   for (const rule of rules) {
     if (!rule.enabled) continue;
     try {
-      const value = await computeIndicator(kv, rule.indicator);
+      const { value, detail } = await computeIndicator(kv, rule.indicator);
       let signal: Signal = applyRule(rule, value);
       let message = '';
       // 股息率利差硬门槛：股息率必须 > 国债利率（差值 > 0）才允许 BUY
@@ -96,11 +122,12 @@ export async function runMonitor(env: { MONITOR_KV: KVNamespace } & NotifyEnv): 
         signal = 'HOLD';
         message = `差值 ${value} ≤ 0：股息率不高于国债利率，不买入`;
       }
+      const reason = message || buildReason(rule, value, signal);
       const prevSignal = prevMap.get(rule.id) ?? null;
       const changed = prevSignal !== null && prevSignal !== signal;
-      items.push({ ruleId: rule.id, name: rule.name, indicator: rule.indicator, value, signal, prevSignal, changed, message, updatedAt: nowIso() });
+      items.push({ ruleId: rule.id, name: rule.name, indicator: rule.indicator, value, signal, prevSignal, changed, message, updatedAt: nowIso(), detail, reason });
       if (changed) {
-        changedEvents.push({ at: nowIso(), ruleId: rule.id, name: rule.name, indicator: rule.indicator, value, from: prevSignal, to: signal });
+        changedEvents.push({ at: nowIso(), ruleId: rule.id, name: rule.name, indicator: rule.indicator, value, from: prevSignal, to: signal, detail, reason });
       }
     } catch (e: any) {
       items.push({ ruleId: rule.id, name: rule.name, indicator: rule.indicator, value: null, signal: 'ERROR', prevSignal: prevMap.get(rule.id) ?? null, message: e.message, updatedAt: nowIso() });

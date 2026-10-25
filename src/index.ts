@@ -54,7 +54,15 @@ async function handleTestEmail(context: HandlerContext): Promise<Response> {
     });
   }
   await sendAlertEmail(
-    [{ at: new Date().toISOString(), name: '测试规则（示例）', value: 1.23, from: 'HOLD', to: 'BUY' }],
+    [{
+      at: new Date().toISOString(),
+      name: '测试规则（示例）',
+      value: 2.55,
+      from: 'HOLD',
+      to: 'BUY',
+      detail: { dividendYield: 4.19, treasuryYield: 1.64, spread: 2.55 },
+      reason: '值 2.55 ≥ BUY 阈值 2.5 → 买入（示例数据）',
+    }],
     context.env,
   );
   return new Response(JSON.stringify({ ok: true, message: '测试邮件已触发，请检查收件箱（含垃圾邮件）' }), {

@@ -19,6 +19,20 @@ function fmtVal(v) {
   return String(v);
 }
 
+/** 把底层数据格式化成可读文本，如「股息率 4.19% · 国债 1.64% · 利差 2.55」 */
+function formatDetail(it) {
+  const d = it.detail || {};
+  const p = [];
+  if (d.dividendYield != null) p.push(`股息率 ${d.dividendYield}%`);
+  if (d.treasuryYield != null) p.push(`国债 ${d.treasuryYield}%`);
+  if (d.spread != null) p.push(`利差 ${d.spread}`);
+  if (d.percentile != null) p.push(`百分位 ${d.percentile}%`);
+  if (d.erp != null) p.push(`ERP ${d.erp}%`);
+  if (d.pe != null) p.push(`PE ${d.pe}`);
+  if (d.historyDays != null) p.push(`${d.historyDays}天样本`);
+  return p.length ? p.join(' · ') : '—';
+}
+
 function fmtTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -224,8 +238,9 @@ async function loadStatus() {
     tr.innerHTML = `
       <td class="name-cell" data-label="规则">${esc(it.name)}<button class="info-btn" data-doc="${esc(it.ruleId)}" title="规则说明">!</button></td>
       <td data-label="当前值">${fmtVal(it.value)}</td>
+      <td data-label="底层数据" class="muted">${formatDetail(it)}</td>
       <td data-label="信号">${signalBadge(it.signal)}</td>
-      <td data-label="说明" class="muted">${esc(it.message || '')}</td>
+      <td data-label="命中原因" class="muted">${esc(it.reason || it.message || '—')}</td>
       <td data-label="更新时间">${fmtTime(it.updatedAt)}</td>`;
     rt.appendChild(tr);
   });
