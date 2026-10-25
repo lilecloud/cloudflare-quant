@@ -13,23 +13,33 @@ const EASTMONEY_HOSTS = [
 // 记住最近一次成功的主机，避免每次请求都先失败一次
 let workingHost: string | undefined;
 
+// 浏览器 UA + Referer：东财对无 UA 的云端请求偶发 502/403
+const UA = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+  'Referer': 'https://quote.eastmoney.com/',
+};
+
 async function fetchEastmoney(path: string, params: URLSearchParams, ttl: number): Promise<Response> {
   const hosts = workingHost
     ? [workingHost, ...EASTMONEY_HOSTS.filter(h => h !== workingHost)]
     : EASTMONEY_HOSTS;
 
   let lastErr: unknown;
-  for (const host of hosts) {
-    try {
-      const res = await fetchCached(`${host}${path}?${params}`, ttl);
-      if (res.ok) {
-        workingHost = host;
-        return res;
+  // 最多重试 2 轮（push2 对云端 IP 偶发 502，重试常能恢复）
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const host of hosts) {
+      try {
+        const res = await fetchCached(`${host}${path}?${params}`, ttl, { headers: UA });
+        if (res.ok) {
+          workingHost = host;
+          return res;
+        }
+        lastErr = new Error(`HTTP ${res.status}`);
+      } catch (e) {
+        lastErr = e;
       }
-      lastErr = new Error(`HTTP ${res.status}`);
-    } catch (e) {
-      lastErr = e;
     }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 400));
   }
   throw lastErr ?? new Error('所有东方财富主机均不可达');
 }
