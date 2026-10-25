@@ -1,51 +1,53 @@
 # quant
 
-统一的 Cloudflare 量化监控项目：**静态页面 + API + Cron 定时**，全部运行在一个 Cloudflare Worker 内，指标计算用 TypeScript 实现（**不依赖 Python / akshare**），数据源直连中证指数与东方财富。
+统一的 Cloudflare 量化监控项目：**静态页面 + API + Cron 定时 + 邮件通知**，全部运行在一个 Cloudflare Worker 内，指标计算用 TypeScript 实现（**不依赖 Python / akshare**），数据源直连中证指数与东方财富。
 
 ## 功能
 
 | 功能 | 页面 | 接口 |
 |---|---|---|
-| 个股多维度分析 | `/`（个股分析 tab） | `GET /api/analyze?code=600000` |
+| 个股多维度分析（⚠️ 云端受限，见下方「已知限制」） | `/`（个股分析 tab） | `GET /api/analyze?code=600000` |
 | 指数估值 | `/`（指数估值 tab） | `GET /api/indexes` |
 | 信号规则管理 | `/monitor`（监控规则 tab） | `GET /api/rules`、`PUT /api/rules` |
 | 信号运行状态 | `/monitor`（运行状态 tab） | `GET /api/results` |
 | 定时计算 | — | Worker `scheduled`（cron） |
+| **信号变化邮件通知** | — | cron 内触发（Resend） |
+| 手动测试邮件 | — | `GET /api/test-email` |
 
 ## 架构
 
 ```
-浏览器
-  │
-  ▼
-Cloudflare Worker (src/index.ts)
-  ├─ /api/*            → src/api/* 路由分发
-  ├─ 其它路径          → public/ 静态资源（Workers Static Assets）
-  └─ scheduled(cron)   → src/lib/monitoring.ts
-                             │
-                             ▼
-                    KV: PE_HISTORY / MONITOR_KV
+浏览器 ──► Cloudflare Worker (src/index.ts)
+              ├─ /api/*            → src/api/* 路由分发
+              ├─ 其它路径          → public/ 静态资源（Workers Static Assets）
+              └─ scheduled(cron)   → src/lib/monitoring.ts
+                                         │
+                                         ├─► KV: PE_HISTORY / MONITOR_KV
+                                         └─► 信号变化时 → src/lib/notify.ts → Resend 邮件
 ```
+
+站点受 **Cloudflare Access** 保护（只允许指定邮箱登录），`/api/*` 同样在 Access 之后。
 
 ## 目录结构
 
 ```
 .
-├── wrangler.toml          # Worker 名、assets、cron、KV 绑定
+├── wrangler.toml          # Worker 名、assets、cron、KV 绑定、邮件变量
 ├── package.json
 ├── tsconfig.json
 ├── README.md
 ├── src/
-│   ├── index.ts           # Worker 入口：fetch 路由 + scheduled
+│   ├── index.ts           # Worker 入口：fetch 路由 + scheduled + /api/test-email
 │   ├── api/               # API handler（analyze / indexes / rules / results / monitor-shared）
 │   └── lib/
 │       ├── csindex.ts      中证指数：PE 历史 / 百分位 / 当前股息率
-│       ├── eastmoney.ts    东财行情（个股、板块）
+│       ├── eastmoney.ts    东财行情（个股、板块）—— 免费版云端受限，见「已知限制」
 │       ├── emfin.ts        东财财务数据（ROE / EPS / 现金流等）
 │       ├── analysis.ts     个股各维度分析逻辑
 │       ├── treasury.ts     10Y 国债收益率（东财数据中心）
 │       ├── rules.ts        规则模型 + 信号判定（applyRule）
 │       ├── monitoring.ts   监控主流程：读规则 → 算指标 → 判信号 → 写 KV
+│       ├── notify.ts       信号变化邮件通知（Resend HTTP API）
 │       ├── cache.ts        Cache API 封装
 │       └── indexes.ts / types.ts
 └── public/
@@ -57,7 +59,7 @@ Cloudflare Worker (src/index.ts)
 
 ### `GET /api/analyze?code=<6位代码>`
 
-个股多维度分析。返回：
+个股多维度分析（⚠️ 云端可能 502，见「已知限制」）。返回：
 
 ```jsonc
 {
@@ -91,6 +93,10 @@ Cloudflare Worker (src/index.ts)
 
 返回最新结果与信号历史：`{ "results": { "updatedAt", "items" }, "signalLog": [...] }`。
 
+### `GET /api/test-email`
+
+手动触发一封**测试邮件**（需已配置 `RESEND_API_KEY`）。用于验证邮件通路，返回 `{ ok: true }` 或错误。
+
 ## 指标（indicator）
 
 | indicator | 含义 | 数据源 |
@@ -105,7 +111,7 @@ Cloudflare Worker (src/index.ts)
 - `direction: "high"`：值 ≥ buyThreshold → BUY；值 ≤ sellThreshold → SELL；中间 HOLD。
 - `direction: "low"`：值 ≤ buyThreshold → BUY；值 ≥ sellThreshold → SELL；中间 HOLD。
 - **股息率利差规则硬门槛**：`dividend_spread_*` 必须同时满足「股息率 > 国债利率」（差值 > 0）才允许 BUY，否则强制 HOLD。
-- 只在信号「发生变化」时写入 `signal_log`（保留最近 50 条）。
+- 只在信号「发生变化」时写入 `signal_log`（保留最近 50 条）**并发送邮件**。
 
 默认规则：
 
@@ -115,6 +121,34 @@ Cloudflare Worker (src/index.ts)
 | 红利低波股息率 | `dividend_yield_H30269` | high | ≥ 4.5 | ≤ 3.0 |
 | 沪深300 PE百分位 | `pe_percentile_000300` | low | ≤ 30 | ≥ 80 |
 | 中证红利股息率 | `dividend_yield_000922` | high | ≥ 5.0 | ≤ 3.5 |
+
+## 邮件通知
+
+信号发生切换时（cron 计算阶段），`src/lib/notify.ts` 通过 **Resend** 发送邮件。
+
+### 配置
+
+1. 注册 [resend.com](https://resend.com)（免费 3000 封/月），用收件邮箱注册
+2. 创建 API Key
+3. 设置 Worker secret：
+   ```bash
+   npx wrangler secret put RESEND_API_KEY
+   ```
+
+### 环境变量（`wrangler.toml` 的 `[vars]`）
+
+| 变量 | 说明 | 默认 |
+|---|---|---|
+| `ALERT_TO` | 收件邮箱 | `lile_0126@126.com` |
+| `ALERT_FROM` | 发件人 | `onboarding@resend.dev`（Resend 测试地址） |
+| `RESEND_API_KEY` | API Key（**用 secret 设置，勿写进 toml**） | — |
+
+### 注意事项
+
+- Resend 免费版**无自定义域名时**，发件人固定为 `onboarding@resend.dev`，**只能发给注册账号的邮箱**。要发给其他邮箱需绑定域名。
+- 邮件可能进垃圾箱，首次请去「垃圾邮件」里找并标记非垃圾。
+- **只在信号真变化时发送**，首次运行不会发（无历史可对比）。
+- 手动测试：访问 `/api/test-email`。
 
 ## KV 结构
 
@@ -140,13 +174,12 @@ Cloudflare Worker (src/index.ts)
    npx wrangler kv namespace create MONITOR_KV
    ```
    把返回的 `id` 填进 `wrangler.toml` 的对应位置。
-4. 部署：`npx wrangler deploy`
+4. 配置邮件 key：`npx wrangler secret put RESEND_API_KEY`
+5. 部署：`npx wrangler deploy`
 
 部署成功后 Worker 的地址形如 `https://quant.<你的子域>.workers.dev`。
 
 ### Cron
-
-`wrangler.toml` 中：
 
 ```toml
 [triggers]
@@ -159,11 +192,16 @@ crons = ["45 7 * * 1-5"]
 
 ```bash
 npm install
-npx wrangler dev            # 本地 Miniflare，含本地 KV
-npx wrangler deploy --dry-run   # 只打包不部署，验证能否编译
+npx wrangler dev                 # 本地 Miniflare，含本地 KV
+npx wrangler deploy --dry-run    # 只打包不部署，验证能否编译
 ```
 
 测试 cron 本地触发：`npx wrangler dev --test-scheduled`，然后访问 `http://127.0.0.1:8787/__scheduled`。
+
+## 已知限制
+
+- **个股分析（`/api/analyze`）在云端可能 502**：它依赖东方财富 `push2` 行情接口，而该接口会对 **Cloudflare 边缘 IP** 返回 502。这是基础设施层面的 IP 拦截，加 UA/重试都无法解决。**建议个股分析用本地 Python `stock_analyzer.py`**（国内直连东财正常）。
+- 指数估值、信号监控不受影响（走中证指数 + 东财数据中心）。
 
 ## 数据源与风险
 
