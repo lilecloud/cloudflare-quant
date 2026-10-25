@@ -1,0 +1,21 @@
+name = "cloudflare-quant"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+
+# 静态页面（index.html / app.js / monitor.html / monitor.js 由 Workers Static Assets 提供）
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# 定时任务：UTC 07:45 = 北京时间 15:45，周一到周五（节假日会跑但值不变，无副作用）
+[triggers]
+crons = ["45 7 * * 1-5"]
+
+# KV 绑定（复用现有命名空间，数据无缝衔接）
+[[kv_namespaces]]
+binding = "PE_HISTORY"
+id = "ddddc64e370f496a8ea6d3accdc9c324"
+
+[[kv_namespaces]]
+binding = "MONITOR_KV"
+id = "bd48f9f9f13640c78ede0a1a1e0b1a97"

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>A股多维度分析</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--dim:#8b949e;--green:#3fb950;--red:#f85149;--yellow:#d29922;--accent:#58a6ff}
+html{font-size:16px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:16px}
+.container{max-width:800px;margin:0 auto}
+h1{font-size:1.4rem;font-weight:600;margin-bottom:4px}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.topbar h1{margin-bottom:0}
+.nav-link{color:var(--accent);text-decoration:none;font-size:.88rem;padding:6px 14px;border:1px solid var(--border);border-radius:8px;transition:border-color .15s;white-space:nowrap}
+.nav-link:hover{border-color:var(--accent)}
+.sub{color:var(--dim);font-size:.85rem;margin-bottom:20px}
+
+/* search */
+/* tabs */
+.tabs{display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border)}
+.tab{padding:8px 16px;background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);font-size:.9rem;cursor:pointer;transition:color .15s,border-color .15s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--text)}
+
+.search-box{display:flex;gap:8px;margin-bottom:24px}
+.search-box input{flex:1;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:1rem;outline:none}
+.search-box input:focus{border-color:var(--accent)}
+.search-box button{padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:1rem;font-weight:500;cursor:pointer;white-space:nowrap}
+.search-box button:disabled{opacity:.5;cursor:not-allowed}
+
+/* loading */
+#loading{text-align:center;padding:40px 0;color:var(--dim);display:none}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* error */
+#error{display:none;padding:16px;border:1px solid var(--red);border-radius:8px;background:rgba(248,81,73,.08);color:var(--red);margin-bottom:16px;font-size:.9rem}
+
+/* stock header */
+.stock-header{padding:16px 0;margin-bottom:16px;border-bottom:1px solid var(--border);display:none}
+.stock-header .name{font-size:1.3rem;font-weight:600}
+.stock-header .code{color:var(--dim);font-size:.9rem;margin-left:8px}
+.stock-header .industry{color:var(--dim);font-size:.85rem;margin-top:2px}
+
+/* dimension cards */
+.dim{margin-bottom:12px;border:1px solid var(--border);border-radius:10px;background:var(--card);overflow:hidden;display:none}
+.dim-header{padding:12px 16px;font-weight:600;font-size:.95rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.dim-header .icon{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0}
+.dim-header .icon.pass{background:rgba(63,185,80,.15);color:var(--green)}
+.dim-header .icon.fail{background:rgba(248,81,73,.15);color:var(--red)}
+.dim-header .icon.warn{background:rgba(210,153,34,.15);color:var(--yellow)}
+.dim-body{padding:12px 16px;font-size:.88rem;line-height:1.6}
+.dim-body .error-msg{color:var(--red)}
+.dim-body .stat{color:var(--dim);margin-bottom:8px}
+.dim-body .stat strong{color:var(--text)}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:8px}
+th{text-align:left;color:var(--dim);font-weight:500;padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:4px 6px;border-bottom:1px solid rgba(48,54,61,.4);white-space:nowrap}
+td:first-child,th:first-child{padding-left:0}
+tr.target{color:var(--yellow);font-weight:500}
+
+/* records */
+.rec{display:flex;justify-content:space-between;padding:3px 0;font-size:.85rem;border-bottom:1px solid rgba(48,54,61,.2)}
+.rec:last-child{border:none}
+.rec .year{color:var(--dim)}
+.rec .val{font-weight:500}
+.rec .mark{font-size:.9rem;margin-left:6px}
+.rec .mark.pass{color:var(--green)}
+.rec .mark.fail{color:var(--red)}
+
+/* conclusion */
+.conclusion{margin-top:10px;padding:10px 12px;border-radius:6px;font-size:.88rem;font-weight:500}
+.conclusion.pass{background:rgba(63,185,80,.1);color:var(--green)}
+.conclusion.fail{background:rgba(248,81,73,.1);color:var(--red)}
+.conclusion.warn{background:rgba(210,153,34,.1);color:var(--yellow)}
+
+/* history */
+.history{display:none;margin-bottom:20px}
+.history-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.history-title{font-size:.85rem;color:var(--dim)}
+.history-clear{background:none;border:1px solid var(--border);border-radius:6px;color:var(--dim);font-size:.75rem;padding:2px 8px;cursor:pointer}
+.history-clear:hover{color:var(--red);border-color:var(--red)}
+.history-list{display:flex;flex-wrap:wrap;gap:6px}
+.history-item{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:.82rem;cursor:pointer;transition:border-color .15s;background:var(--card);white-space:nowrap}
+.history-item:hover{border-color:var(--accent)}
+.history-item .h-code{color:var(--dim);font-size:.78rem}
+.history-item .h-name{color:var(--text)}
+
+/* tabs */
+.tabs{display:flex;gap:2px;margin-bottom:20px;border-bottom:1px solid var(--border)}
+.tab{padding:8px 18px;border:none;background:none;color:var(--dim);font-size:.92rem;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--text)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* index cards */
+.index-card{border:1px solid var(--border);border-radius:10px;background:var(--card);padding:14px 16px;margin-bottom:0;flex:1 1 280px;max-width:100%;min-width:240px;display:flex;flex-direction:column}
+#idxList,#idxNonPeList{display:flex;flex-wrap:wrap;gap:10px}
+.index-card .i-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;gap:8px}
+.index-card .i-name{font-weight:600;font-size:.95rem}
+.index-card .i-code{color:var(--dim);font-size:.78rem}
+.index-card .i-stats{display:flex;gap:16px;font-size:.82rem;color:var(--dim);margin-bottom:14px}
+.index-card .i-stats strong{color:var(--text)}
+/* progress bar */
+.i-bar-wrap{position:relative;height:16px;margin-bottom:6px;margin-top:4px}
+.i-bar-bg{position:absolute;inset:0;background:linear-gradient(to right,#22c55e 0%,#22c55e 10%,#4ade80 10%,#4ade80 30%,#eab308 30%,#eab308 70%,#f97316 70%,#f97316 90%,#ef4444 90%,#ef4444 100%);border-radius:6px;opacity:.25}
+.i-bar{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding-right:6px}
+.i-bar-marker{width:4px;height:16px;background:var(--text);border-radius:2px;position:absolute;transform:translateX(-50%)}
+.i-bar-val{font-size:.75rem;font-weight:700;color:var(--text);position:absolute;top:-18px;transform:translateX(-50%);white-space:nowrap}
+.i-footer{display:flex;justify-content:space-between;align-items:center;font-size:.82rem}
+.i-level{font-weight:600}
+.i-level.est{color:#22c55e}
+.i-level.under{color:#4ade80}
+.i-level.normal{color:#eab308}
+.i-level.over{color:#f97316}
+.i-level.hot{color:#ef4444}
+.i-level.na{color:#8b949e}
+.i-action{color:var(--dim);font-size:.8rem}
+.idx-section-title{font-size:.9rem;font-weight:700;color:var(--accent);margin:18px 0 10px;padding-left:8px;border-left:3px solid var(--accent)}
+.i-val-badge{font-size:.7rem;color:#8b949e;border:1px solid var(--border);border-radius:10px;padding:1px 8px;background:rgba(139,148,158,.08)}
+.i-note{font-size:.78rem;color:var(--dim);margin-bottom:12px;line-height:1.5}
+
+@media(max-width:480px){
+  body{padding:12px}
+  .search-box{flex-direction:column}
+  .search-box button{padding:12px}
+  .dim-body{padding:10px 12px}
+  table{font-size:.78rem}
+  .stock-header .name{font-size:1.1rem}
+  .index-card{flex:1 1 100%;min-width:0}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h1>📊 A股 多维度分析</h1>
+    <a class="nav-link" href="/monitor">📡 信号监控</a>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="stock">个股分析</button>
+    <button class="tab" data-tab="index">指数估值</button>
+  </div>
+
+  <!-- Tab 1: 个股分析 -->
+  <div class="tab-content active" id="tabStock">
+  <div class="search-box">
+    <input type="text" id="codeInput" placeholder="输入股票代码，如 600000" maxlength="6" inputmode="numeric" pattern="\d*">
+    <button id="searchBtn">分析</button>
+  </div>
+
+  <div class="history" id="history">
+    <div class="history-header">
+      <span class="history-title">历史记录</span>
+      <button class="history-clear" id="clearHistory">清空</button>
+    </div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <span>正在获取数据，请稍候...</span>
+  </div>
+
+  <div id="error"></div>
+
+  <div class="stock-header" id="stockHeader">
+    <div>
+      <span class="name" id="stockName"></span>
+      <span class="code" id="stockCode"></span>
+    </div>
+    <div class="industry" id="stockIndustry"></div>
+  </div>
+
+  <div id="results">
+    <div class="dim" id="dimPe"><div class="dim-header"><span class="icon" id="peIcon">?</span>行业市盈率排名</div><div class="dim-body" id="peBody"></div></div>
+    <div class="dim" id="dimRoe"><div class="dim-header"><span class="icon" id="roeIcon">?</span>ROE连续5年分析</div><div class="dim-body" id="roeBody"></div></div>
+    <div class="dim" id="dimEps"><div class="dim-header"><span class="icon" id="epsIcon">?</span>每股收益连续5年增长</div><div class="dim-body" id="epsBody"></div></div>
+    <div class="dim" id="dimDebt"><div class="dim-header"><span class="icon" id="debtIcon">?</span>负债率预警</div><div class="dim-body" id="debtBody"></div></div>
+    <div class="dim" id="dimCf"><div class="dim-header"><span class="icon" id="cfIcon">?</span>经营现金流分析</div><div class="dim-body" id="cfBody"></div></div>
+    <div class="dim" id="dimRevenue"><div class="dim-header"><span class="icon" id="revenueIcon">?</span>营收增长分析（A）</div><div class="dim-body" id="revenueBody"></div></div>
+    <div class="dim" id="dimMargin"><div class="dim-header"><span class="icon" id="marginIcon">?</span>毛利率/净利率（A）</div><div class="dim-body" id="marginBody"></div></div>
+    <div class="dim" id="dimFcf"><div class="dim-header"><span class="icon" id="fcfIcon">?</span>自由现金流分析（A）</div><div class="dim-body" id="fcfBody"></div></div>
+    <div class="dim" id="dimValuation"><div class="dim-header"><span class="icon" id="valuationIcon">?</span>历史估值百分位（A）</div><div class="dim-body" id="valuationBody"></div></div>
+    <div class="dim" id="dimCashRatio"><div class="dim-header"><span class="icon" id="cashRatioIcon">?</span>净现比分析（B）</div><div class="dim-body" id="cashRatioBody"></div></div>
+    <div class="dim" id="dimGoodwill"><div class="dim-header"><span class="icon" id="goodwillIcon">?</span>商誉占比（B）</div><div class="dim-body" id="goodwillBody"></div></div>
+    <div class="dim" id="dimLiquidity"><div class="dim-header"><span class="icon" id="liquidityIcon">?</span>流动/速动比率（B）</div><div class="dim-body" id="liquidityBody"></div></div>
+    <div class="dim" id="dimPeg"><div class="dim-header"><span class="icon" id="pegIcon">?</span>PEG估值（B）</div><div class="dim-body" id="pegBody"></div></div>
+  </div>
+  </div>
+
+  <!-- Tab 2: 指数估值 -->
+  <div class="tab-content" id="tabIndex">
+  <div id="idxLoading" style="text-align:center;padding:40px 0;color:var(--dim);display:none">
+    <div class="spinner"></div>
+    <span>正在获取指数数据，请稍候...</span>
+  </div>
+  <div id="idxError" style="display:none;padding:16px;border:1px solid var(--red);border-radius:8px;background:rgba(248,81,73,.08);color:var(--red);margin-bottom:16px;font-size:.9rem"></div>
+  <div id="idxUpdated" style="text-align:right;color:var(--dim);font-size:.75rem;margin-bottom:8px"></div>
+  <div class="idx-section-title" id="idxPeTitle" style="display:none">📊 市盈率估值</div>
+  <div id="idxList"></div>
+  <div class="idx-section-title" id="idxNonPeTitle" style="display:none">📌 非市盈率估值</div>
+  <div id="idxNonPeList"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
