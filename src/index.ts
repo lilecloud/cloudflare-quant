@@ -3,6 +3,7 @@ import * as indexes from './api/indexes';
 import * as rules from './api/rules';
 import * as results from './api/results';
 import { runMonitor } from './lib/monitoring';
+import { sendAlertEmail } from './lib/notify';
 
 interface Env {
   PE_HISTORY: KVNamespace;
@@ -38,7 +39,27 @@ function route(context: HandlerContext): Promise<Response> | null {
     if (method === 'GET') return results.onRequestGet(context);
     if (method === 'OPTIONS') return results.onRequestOptions();
   }
+  if (path === '/api/test-email') {
+    if (method === 'GET' || method === 'POST') return handleTestEmail(context);
+  }
   return null;
+}
+
+/** 手动测试邮件：GET /api/test-email（需已配置 RESEND_API_KEY） */
+async function handleTestEmail(context: HandlerContext): Promise<Response> {
+  if (!context.env.RESEND_API_KEY) {
+    return new Response(JSON.stringify({ error: '未配置 RESEND_API_KEY，请先执行 npx wrangler secret put RESEND_API_KEY' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  await sendAlertEmail(
+    [{ at: new Date().toISOString(), name: '测试规则（示例）', value: 1.23, from: 'HOLD', to: 'BUY' }],
+    context.env,
+  );
+  return new Response(JSON.stringify({ ok: true, message: '测试邮件已触发，请检查收件箱（含垃圾邮件）' }), {
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 export default {
